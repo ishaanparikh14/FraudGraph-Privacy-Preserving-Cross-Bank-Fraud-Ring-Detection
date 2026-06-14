@@ -7,6 +7,7 @@
 
 ## Table of Contents
 
+- [Implementation](#implementation)
 - [What It Does](#what-it-does)
 - [Key Features In Depth](#key-features-in-depth)
   - [Upload & Analyze Bank Statements (Highlight)](#upload--analyze-bank-statements-highlight)
@@ -20,7 +21,6 @@
 - [Project Structure](#project-structure)
 - [Detection Pipeline](#detection-pipeline)
 - [Services & Ports](#services--ports)
-- [Screenshots](#screenshots)
 - [Prerequisites](#prerequisites)
 - [Quick Start](#quick-start)
 - [Running Services Manually](#running-services-manually)
@@ -28,6 +28,85 @@
 - [API Reference](#api-reference)
 - [ML Model](#ml-model)
 - [Troubleshooting](#troubleshooting)
+
+---
+
+## Implementation
+
+### Home — Project Overview & Detection Pipeline
+The home page shows the four-stage detection pipeline and live STOMP connection status.
+
+![Home — LIVE with 37 txns and 2 fraud alerts](assets/Screenshot%202026-06-14%20102625.png)
+
+---
+
+### Home — Reconnecting State
+When the backend services are not reachable, the system automatically tries to reconnect and shows the user the offline status.
+
+![Home — Reconnecting](assets/Screenshot%202026-06-14%20101310.png)
+
+---
+
+### Upload & Analyze — Batch Dataset Analysis
+Drop a CSV, Excel, or PDF bank statement. The system parses it, engineers features, runs the DP-RF model on every row, builds a static graph, runs Tarjan SCC, and returns a full fraud report instantly.
+
+![Upload & Analyze — PDF statement: 72 txns, 4 flagged, 3% avg risk](assets/Screenshot%202026-06-14%20003731.png)
+
+---
+
+### Live Surveillance — Force-Directed Transaction Graph
+Real-time force graph where nodes are accounts, edges are transactions. Ring members pulse red. The live ticker on the right shows each transaction with its risk label.
+
+![Live Surveillance — 80 txns, 9-node ring visible](assets/Screenshot%202026-06-14%20102707.png)
+
+---
+
+### XAI & Forensics — Fraud Ring Subgraphs + Transaction Lookup
+Left panel shows each detected ring as a force-directed subgraph. Right panel shows ML risk score, SHAP feature importance bars, ring membership, and transaction metadata for any looked-up transaction.
+
+![XAI Forensics — RING_002 with transaction detail and SHAP score](assets/Screenshot%202026-06-14%20102734.png)
+
+---
+
+### XAI & Forensics — Ring Transaction List
+Clicking a ring card on the left switches the right panel to a scrollable list of all fraudulent transactions in that ring, each showing amount, accounts, risk score, and an **Inspect →** button.
+
+![XAI Forensics — Ring Transactions panel showing 80 transactions in RING_002](assets/Screenshot%202026-06-14%20103040.png)
+
+---
+
+### Analytics — Stream Stats, Fraud Ratio & Top Accounts
+Four panels: volume/10s line chart, fraud ratio donut (6.3%), amount distribution histogram, and top accounts by appearance count.
+
+![Analytics — 80 txns, 6.3% fraud ratio, top accounts bar chart](assets/Screenshot%202026-06-14%20103127.png)
+
+---
+
+### Analytics — Fraud Ring Alerts Table
+Live session table of all detected rings with their cycle length, detection method (Tarjan's SCC), source service, and timestamp.
+
+![Analytics — 3 rings detected: RING_001 (4 nodes), RING_002 (6), RING_003 (3)](assets/Screenshot%202026-06-14%20102811.png)
+
+---
+
+### Analytics — Dashboard Overview
+A macro view of the entire analytics panel showing all visualizations and the alerts table simultaneously.
+
+![Analytics — Full Page Overview](assets/Screenshot%202026-06-14%20103139.png)
+
+---
+
+### Security & Privacy — Pseudonym Activity Audit Log
+All account identifiers are SHA-256 pseudonyms. This page shows every account seen this session with direction, tx count, last seen, and fraud-linked flag. No PII is ever stored.
+
+![Security & Privacy — 20 accounts, session-only data](assets/Screenshot%202026-06-14%20102759.png)
+
+---
+
+### Backend Status Indicator
+Bottom-right bar shows health of all backends (WebSocket, Spring API, Graph Engine, ML scorer, Simulator). Green = healthy, red = unreachable.
+
+![Backend status bar — all green](assets/Screenshot%202026-06-14%20102249.png)
 
 ---
 
@@ -242,71 +321,6 @@ Fraud-Graph-Detection/
 | **Kafka** | **29092** (host-mapped) | Message bus |
 | **Zookeeper** | **22181** (host-mapped) | Kafka coordination |
 | **Simulator Control** | **8095** | `POST /start`, `POST /stop` |
-
----
-
-## Screenshots
-
-### Home — Project Overview & Detection Pipeline
-The home page shows the four-stage detection pipeline and live STOMP connection status.
-
-![Home — LIVE with 37 txns and 2 fraud alerts](assets/Screenshot%202026-06-14%20102625.png)
-
----
-
-### Upload & Analyze — Batch Dataset Analysis
-Drop a CSV, Excel, or PDF bank statement. The system parses it, engineers features, runs the DP-RF model on every row, builds a static graph, runs Tarjan SCC, and returns a full fraud report instantly.
-
-![Upload & Analyze — PDF statement: 72 txns, 4 flagged, 3% avg risk](assets/Screenshot%202026-06-14%20003731.png)
-
----
-
-### Live Surveillance — Force-Directed Transaction Graph
-Real-time force graph where nodes are accounts, edges are transactions. Ring members pulse red. The live ticker on the right shows each transaction with its risk label.
-
-![Live Surveillance — 80 txns, 9-node ring visible](assets/Screenshot%202026-06-14%20102707.png)
-
----
-
-### XAI & Forensics — Fraud Ring Subgraphs + Transaction Lookup
-Left panel shows each detected ring as a force-directed subgraph. Right panel shows ML risk score, SHAP feature importance bars, ring membership, and transaction metadata for any looked-up transaction.
-
-![XAI Forensics — RING_002 with transaction detail and SHAP score](assets/Screenshot%202026-06-14%20102734.png)
-
----
-
-### XAI & Forensics — Ring Transaction List
-Clicking a ring card on the left switches the right panel to a scrollable list of all fraudulent transactions in that ring, each showing amount, accounts, risk score, and an **Inspect →** button.
-
-![XAI Forensics — Ring Transactions panel showing 80 transactions in RING_002](assets/Screenshot%202026-06-14%20103040.png)
-
----
-
-### Analytics — Stream Stats, Fraud Ratio & Top Accounts
-Four panels: volume/10s line chart, fraud ratio donut (6.3%), amount distribution histogram, and top accounts by appearance count.
-
-![Analytics — 80 txns, 6.3% fraud ratio, top accounts bar chart](assets/Screenshot%202026-06-14%20103127.png)
-
----
-
-### Analytics — Fraud Ring Alerts Table
-Live session table of all detected rings with their cycle length, detection method (Tarjan's SCC), source service, and timestamp.
-
-![Analytics — 3 rings detected: RING_001 (4 nodes), RING_002 (6), RING_003 (3)](assets/Screenshot%202026-06-14%20102811.png)
-
----
-
-### Security & Privacy — Pseudonym Activity Audit Log
-All account identifiers are SHA-256 pseudonyms. This page shows every account seen this session with direction, tx count, last seen, and fraud-linked flag. No PII is ever stored.
-
-![Security & Privacy — 20 accounts, session-only data](assets/Screenshot%202026-06-14%20102759.png)
-
----
-
-### Backend Status Indicator
-Bottom-right bar shows health of all backends (WebSocket, Spring API, Graph Engine, ML scorer, Simulator). Green = healthy, red = unreachable.
-
-![Backend status bar — all green](assets/Screenshot%202026-06-14%20102249.png)
 
 ---
 
