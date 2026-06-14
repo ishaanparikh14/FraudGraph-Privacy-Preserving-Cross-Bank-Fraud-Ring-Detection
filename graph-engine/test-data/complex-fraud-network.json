@@ -1,0 +1,12 @@
+[
+  {"txn_id": "TXN001", "sender_id": "ACC1", "receiver_id": "ACC2", "amount": 5000.00, "timestamp": "2026-04-20T10:00:00Z", "risk_score": 0.95, "is_high_risk": true},
+  {"txn_id": "TXN002", "sender_id": "ACC2", "receiver_id": "ACC3", "amount": 3000.00, "timestamp": "2026-04-20T10:01:00Z", "risk_score": 0.92, "is_high_risk": true},
+  {"txn_id": "TXN003", "sender_id": "ACC3", "receiver_id": "ACC1", "amount": 2000.00, "timestamp": "2026-04-20T10:02:00Z", "risk_score": 0.88, "is_high_risk": true},
+  {"txn_id": "TXN004", "sender_id": "ACC4", "receiver_id": "ACC5", "amount": 8000.00, "timestamp": "2026-04-20T10:03:00Z", "risk_score": 0.97, "is_high_risk": true},
+  {"txn_id": "TXN005", "sender_id": "ACC5", "receiver_id": "ACC6", "amount": 6000.00, "timestamp": "2026-04-20T10:04:00Z", "risk_score": 0.94, "is_high_risk": true},
+  {"txn_id": "TXN006", "sender_id": "ACC6", "receiver_id": "ACC4", "amount": 4000.00, "timestamp": "2026-04-20T10:05:00Z", "risk_score": 0.91, "is_high_risk": true},
+  {"txn_id": "TXN007", "sender_id": "ACC1", "receiver_id": "ACC4", "amount": 1000.00, "timestamp": "2026-04-20T10:06:00Z", "risk_score": 0.85, "is_high_risk": true},
+  {"txn_id": "TXN008", "sender_id": "ACC7", "receiver_id": "ACC8", "amount": 500.00, "timestamp": "2026-04-20T10:07:00Z", "risk_score": 0.75, "is_high_risk": true},
+  {"txn_id": "TXN009", "sender_id": "ACC8", "receiver_id": "ACC9", "amount": 400.00, "timestamp": "2026-04-20T10:08:00Z", "risk_score": 0.72, "is_high_risk": true},
+  {"txn_id": "TXN010", "sender_id": "ACC9", "receiver_id": "ACC7", "amount": 300.00, "timestamp": "2026-04-20T10:09:00Z", "risk_score": 0.70, "is_high_risk": true}
+]

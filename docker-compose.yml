@@ -1,0 +1,77 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.5.0
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - 22181:2181
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "2181"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  kafka:
+    image: confluentinc/cp-kafka:7.5.0
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    ports:
+      - 29092:29092
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server=localhost:9092"]
+      interval: 5s
+      timeout: 10s
+      retries: 5
+
+  fraudgraph-api:
+    build: .
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - 8080:8080
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      TRANSACTIONS_RAW_TOPIC: transactions.raw
+      FRAUD_ALERTS_TOPIC: fraud.alerts
+
+  graph-engine:
+    build:
+      context: ./graph-engine
+      dockerfile: Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+      fraudgraph-api:
+        condition: service_started
+    ports:
+      - 8082:8082
+    environment:
+      SERVER_PORT: "8082"
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      KAFKA_TOPIC_SCORED: transactions.scored
+      SPRING_API_BASE_URL: http://fraudgraph-api:8080
+
+  ml-engine:
+    build:
+      context: ./ml_engine
+      dockerfile: Dockerfile
+    depends_on:
+      kafka:
+        condition: service_healthy
+    ports:
+      - 8083:8083
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SCORER_THRESHOLD: "0.02"
+      XAI_PORT: "8083"

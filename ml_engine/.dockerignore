@@ -1,0 +1,7 @@
+venv/
+__pycache__/
+*.pyc
+*.png
+*.db
+.git
+benchmark_report.txt

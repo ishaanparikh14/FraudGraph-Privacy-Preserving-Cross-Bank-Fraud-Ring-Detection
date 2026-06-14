@@ -1,0 +1,123 @@
+{
+  "info": {
+    "name": "FraudGraph - Graph Engine API",
+    "description": "API collection for testing Graph Engine endpoints (Person 3)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "Health Check",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/health",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "health"]
+        },
+        "description": "Check if Graph Engine service is running"
+      }
+    },
+    {
+      "name": "Get All Fraud Rings",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/graph/rings",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "graph", "rings"]
+        },
+        "description": "Fetch all detected fraud rings with full details (nodes, edges, PageRank scores)"
+      }
+    },
+    {
+      "name": "Get Specific Fraud Ring",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/graph/rings/RING_001",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "graph", "rings", "RING_001"]
+        },
+        "description": "Fetch specific fraud ring by ID"
+      }
+    },
+    {
+      "name": "Get Graph Statistics",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/graph/statistics",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "graph", "statistics"]
+        },
+        "description": "Get graph statistics (node count, edge count, avg degree)"
+      }
+    },
+    {
+      "name": "Get Benchmark Summary",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/benchmark/summary",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "benchmark", "summary"]
+        },
+        "description": "Get benchmark comparison (Tarjan vs SQL)"
+      }
+    },
+    {
+      "name": "Run Benchmark",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "http://localhost:8081/api/benchmark/run",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8081",
+          "path": ["api", "benchmark", "run"]
+        },
+        "description": "Trigger new benchmark run"
+      }
+    },
+    {
+      "name": "Person 1 - Send Fraud Alert",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"alert_id\": \"RING_001\",\n  \"cycle_accounts\": [\"ACC1\", \"ACC2\", \"ACC3\"],\n  \"back_edge_source\": \"ACC3\",\n  \"back_edge_target\": \"ACC1\",\n  \"edge_ids\": [\"TXN001\", \"TXN002\", \"TXN003\"],\n  \"total_amount\": 10000.00,\n  \"severity\": \"high\",\n  \"reason\": \"Tarjan SCC fraud ring detected\",\n  \"source\": \"graph-engine\"\n}"
+        },
+        "url": {
+          "raw": "http://localhost:8080/alerts/fraud-ring",
+          "protocol": "http",
+          "host": ["localhost"],
+          "port": "8080",
+          "path": ["alerts", "fraud-ring"]
+        },
+        "description": "Test sending alert to Person 1's API (integration test)"
+      }
+    }
+  ]
+}

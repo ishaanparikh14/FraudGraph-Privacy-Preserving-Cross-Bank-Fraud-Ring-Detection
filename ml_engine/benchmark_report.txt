@@ -1,0 +1,23 @@
+FraudGraph Differential Privacy Benchmark Report
+===============================================
+
+Non-Private Baseline (Sklearn RF):
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00    199893
+           1       0.53      0.09      0.16       107
+
+    accuracy                           1.00    200000
+   macro avg       0.76      0.55      0.58    200000
+weighted avg       1.00      1.00      1.00    200000
+
+Differentially Private Model (IBM diffprivlib, eps=1.0):
+              precision    recall  f1-score   support
+
+           0       1.00      1.00      1.00    199893
+           1       0.31      0.04      0.07       107
+
+    accuracy                           1.00    200000
+   macro avg       0.65      0.52      0.53    200000
+weighted avg       1.00      1.00      1.00    200000
+

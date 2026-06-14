@@ -1,0 +1,10 @@
+.git
+.mvn
+venv
+target
+__pycache__
+*.pyc
+Output.txt
+*.pdf
+*.docx
+synopsis_text.txt

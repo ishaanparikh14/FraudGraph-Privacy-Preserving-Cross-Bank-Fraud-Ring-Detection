@@ -1,0 +1,14 @@
+pandas
+scikit-learn
+diffprivlib
+kafka-python
+shap
+lime
+fastapi
+uvicorn
+matplotlib
+pdfplumber
+openpyxl
+xlrd
+python-multipart
+groq

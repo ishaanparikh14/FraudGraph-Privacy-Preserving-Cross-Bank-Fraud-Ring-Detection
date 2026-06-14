@@ -1,0 +1,1679 @@
+You are an expert Frontend Engineer. Your task is to scaffold and build a 
+brand new React SPA in a folder called `fraudgraph-ui/` at the repo root. 
+This is COMPLETELY SEPARATE from the existing `fraudgraph-dashboard/` folder.
+DO NOT touch, import from, or reference anything inside `fraudgraph-dashboard/`.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 0 — SCAFFOLD THE PROJECT
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Run these commands from the repo root to create the project:
+
+  npm create vite@latest fraudgraph-ui -- --template react-ts
+  cd fraudgraph-ui
+  npm install
+  npm install -D tailwindcss @tailwindcss/vite
+  npm install react-router-dom@7
+  npm install zustand
+  npm install @stomp/stompjs sockjs-client
+  npm install framer-motion
+  npm install react-force-graph-2d
+  npm install @tanstack/react-table
+  npm install recharts
+  npm install lucide-react
+  npm install -D vitest @vitest/ui jsdom @testing-library/react 
+               @testing-library/jest-dom @testing-library/user-event
+
+After scaffolding, the final folder structure inside `fraudgraph-ui/src/` 
+must be:
+
+  fraudgraph-ui/
+    index.html
+    vite.config.ts
+    tailwind.config.ts
+    tsconfig.json
+    tsconfig.app.json
+    vitest.config.ts
+    src/
+      main.tsx               ← createRoot entry
+      App.tsx                ← BrowserRouter + routes + StreamBootstrap
+      index.css              ← Tailwind + CSS custom properties
+
+      layouts/
+        AppLayout.tsx        ← Sidebar + TopBar + <Outlet />
+        Sidebar.tsx
+        TopBar.tsx
+
+      components/
+        StreamBootstrap.tsx  ← mounts useFraudStream once globally
+        ConnectionPill.tsx
+        MissingFieldBadge.tsx
+        surveillance/
+          ControlBar.tsx
+          GraphPanel.tsx
+          TickerPanel.tsx
+          TickerRow.tsx
+
+      hooks/
+        useFraudStream.ts    ← STOMP client lifecycle
+        useGraphRingsPoll.ts ← polls graph engine for rings
+
+      store/
+        streamStore.ts       ← all STOMP-derived state
+        dashboardUiStore.ts  ← pinned txn for XAI
+
+      types/
+        fraudStream.ts
+        graphEngine.ts
+        explain.ts
+
+      api/
+        ingestionApi.ts
+        manualIngest.ts
+        injectDemoFraudRing.ts
+        fetchGraphEngine.ts
+        fetchExplain.ts
+        simulatorControl.ts
+
+      lib/
+        parseStompMessage.ts
+        graphFromTransactions.ts
+        pickGraphRing.ts
+        ringDetectionSummary.ts
+        filterRingTransactions.ts
+        sessionAnalytics.ts
+
+      pages/
+        HomePage.tsx
+        LiveSurveillancePage.tsx
+        InvestigatePage.tsx
+        PrivacyPage.tsx
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 1 — VITE CONFIG
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`fraudgraph-ui/vite.config.ts`:
+
+import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  define: {
+    global: 'globalThis',   // required for sockjs-client
+  },
+  server: {
+    host: '127.0.0.1',
+    port: 5174,             // 5174 so it doesn't clash with existing dashboard on 5173
+    proxy: {
+      '/person1-api': {
+        target: 'http://127.0.0.1:8080',
+        rewrite: path => path.replace(/^\/person1-api/, ''),
+        changeOrigin: true,
+      },
+      '/person3-api': {
+        target: 'http://127.0.0.1:8082',
+        rewrite: path => path.replace(/^\/person3-api/, ''),
+        changeOrigin: true,
+      },
+      '/person2-ml': {
+        target: 'http://127.0.0.1:8081',
+        rewrite: path => path.replace(/^\/person2-ml/, ''),
+        changeOrigin: true,
+      },
+      '/simulator-control': {
+        target: 'http://127.0.0.1:8095',
+        rewrite: path => path.replace(/^\/simulator-control/, ''),
+        changeOrigin: true,
+      },
+    },
+  },
+});
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 2 — TAILWIND + CSS TOKENS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`fraudgraph-ui/tailwind.config.ts`:
+
+import type { Config } from 'tailwindcss';
+
+export default {
+  content: ['./index.html', './src/**/*.{ts,tsx}'],
+  theme: {
+    extend: {
+      colors: {
+        'fg-deepest':  'var(--fg-bg-deepest)',
+        'fg-surface':  'var(--fg-bg-surface)',
+        'fg-elevated': 'var(--fg-bg-elevated)',
+        'fg-border':   'var(--fg-border)',
+        'fg-red':      'var(--fg-accent-red)',
+        'fg-amber':    'var(--fg-accent-amber)',
+        'fg-green':    'var(--fg-accent-green)',
+        'fg-blue':     'var(--fg-accent-blue)',
+      },
+      fontFamily: {
+        display: ['JetBrains Mono', 'Fira Code', 'monospace'],
+        body:    ['DM Sans', 'system-ui', 'sans-serif'],
+      },
+    },
+  },
+} satisfies Config;
+
+`fraudgraph-ui/src/index.css`:
+
+@import "tailwindcss";
+
+/* Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&family=DM+Sans:wght@400;500;600&display=swap');
+
+:root {
+  --fg-bg-deepest:     #09090b;
+  --fg-bg-surface:     #18181b;
+  --fg-bg-elevated:    #1c1c1f;
+  --fg-border:         #27272a;
+  --fg-border-hover:   #3f3f46;
+
+  --fg-text-primary:   #f4f4f5;
+  --fg-text-secondary: #a1a1aa;
+  --fg-text-muted:     #71717a;
+
+  --fg-accent-red:     #ef4444;
+  --fg-accent-amber:   #f59e0b;
+  --fg-accent-green:   #22c55e;
+  --fg-accent-blue:    #3b82f6;
+
+  --fg-graph-canvas:      #09090b;
+  --fg-graph-node-normal: #52525b;
+  --fg-graph-node-risk:   #f59e0b;
+  --fg-graph-ring:        #ef4444;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background-color: var(--fg-bg-deepest);
+  color: var(--fg-text-primary);
+  font-family: 'DM Sans', system-ui, sans-serif;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+.mono { font-family: 'JetBrains Mono', monospace; }
+
+/* Card base */
+.fg-card {
+  background: var(--fg-bg-surface);
+  border: 1px solid var(--fg-border);
+  border-radius: 10px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* Glassmorphic surfaces */
+.fg-glass {
+  background: rgba(24,24,27,0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--fg-border);
+}
+
+/* Pulsing live dot */
+@keyframes livePulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+.live-dot { animation: livePulse 1.5s ease-in-out infinite; }
+
+/* Ticker row entry */
+@keyframes tickerIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Ring glow on canvas nodes — applied via canvas shadow in JS */
+@keyframes ringPulse {
+  0%, 100% { box-shadow: 0 0 8px  #ef4444; }
+  50%       { box-shadow: 0 0 28px #ef4444; }
+}
+
+/* Scrollbar — thin and dark */
+::-webkit-scrollbar       { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--fg-border); border-radius: 2px; }
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 3 — TYPES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/types/fraudStream.ts`:
+
+export interface IngestedTransaction {
+  txn_id:          string;
+  source_account:  string;
+  target_account:  string;
+  amount:          number;
+  timestamp:       string;
+  is_high_risk:    boolean;
+  fraud_ring_id?:  string;
+  centrality_score?: number;
+  risk_score?:     number;
+}
+
+export interface FraudAlert {
+  alert_id:          string;
+  cycle_accounts:    string[];
+  edge_ids:          string[];
+  reason:            string;
+  detection_method?: string;
+  timestamp?:        string;
+}
+
+export interface TransactionMetric {
+  throughput_per_sec: number;
+  total_processed:    number;
+  fraud_detected:     number;
+  timestamp:          string;
+}
+
+export type ConnectionState = 'idle' | 'connecting' | 'live' | 'reconnecting';
+
+`src/types/graphEngine.ts`:
+
+export interface GraphEngineRing {
+  ring_id:          string;
+  node_ids:         string[];
+  edge_ids:         string[];
+  priority_rank:    number;
+  detection_method?: string;
+  dfs_back_edge?:   string;
+  centrality?:      Record<string, number>;
+}
+
+export interface GraphEngineRingsResponse {
+  rings: GraphEngineRing[];
+}
+
+export interface BenchmarkSummary {
+  tarjan_ms?:       number;
+  pagerank_ms?:     number;
+  total_nodes:      number;
+  total_edges:      number;
+  rings_found:      number;
+}
+
+`src/types/explain.ts`:
+
+export interface ShapFeature {
+  feature:     string;
+  contribution: number;
+}
+
+export interface LimeFeature {
+  feature:     string;
+  weight:      number;
+}
+
+export interface ExplainResponse {
+  txn_id:       string;
+  risk_score:   number;
+  shap_values:  ShapFeature[];
+  lime_values:  LimeFeature[];
+  timestamp?:   string;
+  total_volume?: number;
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 4 — ZUSTAND STORES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/store/streamStore.ts`:
+
+import { create } from 'zustand';
+import type { 
+  IngestedTransaction, FraudAlert, 
+  TransactionMetric, ConnectionState 
+} from '../types/fraudStream';
+
+const MAX_TRANSACTIONS = 800;
+const MAX_ALERTS       = 50;
+const MAX_WARNINGS     = 100;
+
+interface StreamState {
+  connection:          ConnectionState;
+  streamError:         string | null;
+  integrationWarnings: string[];
+  transactions:        IngestedTransaction[];
+  fraudAlerts:         FraudAlert[];
+  metrics:             TransactionMetric | null;
+
+  // actions
+  setConnection:         (s: ConnectionState) => void;
+  setStreamError:        (e: string | null) => void;
+  pushTransaction:       (t: IngestedTransaction) => void;
+  pushFraudAlert:        (a: FraudAlert) => void;
+  setMetrics:            (m: TransactionMetric) => void;
+  pushIntegrationWarnings: (w: string[]) => void;
+  clearIntegrationWarnings: () => void;
+  reset:                 () => void;
+}
+
+const INITIAL: Omit<StreamState, keyof { [K in keyof StreamState as StreamState[K] extends Function ? K : never]: never }> = {
+  connection: 'idle',
+  streamError: null,
+  integrationWarnings: [],
+  transactions: [],
+  fraudAlerts: [],
+  metrics: null,
+};
+
+export const useStreamStore = create<StreamState>((set) => ({
+  connection:          'idle',
+  streamError:         null,
+  integrationWarnings: [],
+  transactions:        [],
+  fraudAlerts:         [],
+  metrics:             null,
+
+  setConnection: (connection) => set({ connection }),
+  setStreamError: (streamError) => set({ streamError }),
+
+  pushTransaction: (t) => set((s) => ({
+    transactions: [t, ...s.transactions].slice(0, MAX_TRANSACTIONS),
+  })),
+
+  pushFraudAlert: (a) => set((s) => ({
+    fraudAlerts: [a, ...s.fraudAlerts].slice(0, MAX_ALERTS),
+  })),
+
+  setMetrics: (metrics) => set({ metrics }),
+
+  pushIntegrationWarnings: (w) => set((s) => ({
+    integrationWarnings: [
+      ...w.map(msg => `[${new Date().toISOString()}] ${msg}`),
+      ...s.integrationWarnings,
+    ].slice(0, MAX_WARNINGS),
+  })),
+
+  clearIntegrationWarnings: () => set({ integrationWarnings: [] }),
+
+  reset: () => set({
+    connection:          'idle',
+    streamError:         null,
+    integrationWarnings: [],
+    transactions:        [],
+    fraudAlerts:         [],
+    metrics:             null,
+  }),
+}));
+
+`src/store/dashboardUiStore.ts`:
+
+import { create } from 'zustand';
+
+interface DashboardUiState {
+  pinnedTxnIdForXai: string | null;
+  setPinnedTxnIdForXai: (id: string | null) => void;
+}
+
+export const useDashboardUiStore = create<DashboardUiState>((set) => ({
+  pinnedTxnIdForXai: null,
+  setPinnedTxnIdForXai: (id) => set({ pinnedTxnIdForXai: id }),
+}));
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 5 — API LAYER
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/api/ingestionApi.ts`:
+export const ingestionApiBase = () =>
+  import.meta.env.VITE_INGESTION_BASE_URL ?? '/person1-api';
+
+`src/api/manualIngest.ts`:
+import { ingestionApiBase } from './ingestionApi';
+export async function postTransaction(payload: Record<string, unknown>) {
+  const res = await fetch(`${ingestionApiBase()}/transaction`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) throw new Error(`POST /transaction failed: ${res.status}`);
+  return res.json();
+}
+export async function postBatchTransactions(count: number, fraudCount: number) {
+  // Fire `count` random transactions. Flag first `fraudCount` as high_risk.
+  const results = [];
+  for (let i = 0; i < count; i++) {
+    const isFraud = i < fraudCount;
+    results.push(
+      postTransaction({
+        source_account: `ACCT_${Math.random().toString(36).slice(2,10).toUpperCase()}`,
+        target_account: `ACCT_${Math.random().toString(36).slice(2,10).toUpperCase()}`,
+        amount: +(Math.random() * 50000).toFixed(2),
+        is_high_risk: isFraud,
+        timestamp: new Date().toISOString(),
+      })
+    );
+  }
+  return Promise.allSettled(results);
+}
+
+`src/api/injectDemoFraudRing.ts`:
+import { ingestionApiBase } from './ingestionApi';
+export async function postFraudRingAlert(cycleAccounts: string[], detectionMethod = 'TARJAN_SCC') {
+  const res = await fetch(`${ingestionApiBase()}/alerts/fraud-ring`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      cycle_accounts: cycleAccounts,
+      detection_method: detectionMethod,
+      reason: 'Manual demo injection',
+      edge_ids: [],
+    }),
+  });
+  if (!res.ok) throw new Error(`POST /alerts/fraud-ring failed: ${res.status}`);
+  return res.json();
+}
+
+`src/api/fetchGraphEngine.ts`:
+const graphBase = () =>
+  import.meta.env.VITE_GRAPH_ENGINE_BASE_URL ?? '/person3-api';
+
+export async function fetchRings() {
+  const res = await fetch(`${graphBase()}/api/graph/rings`);
+  if (!res.ok) throw new Error(`GET /api/graph/rings failed: ${res.status}`);
+  return res.json();
+}
+export async function fetchBenchmarkSummary() {
+  const res = await fetch(`${graphBase()}/api/benchmark/summary`);
+  if (!res.ok) throw new Error(`GET /api/benchmark/summary failed: ${res.status}`);
+  return res.json();
+}
+
+`src/api/fetchExplain.ts`:
+const mlBase = () =>
+  import.meta.env.VITE_ML_BASE_URL ?? '/person2-ml';
+
+export async function postExplain(txnId: string) {
+  const res = await fetch(`${mlBase()}/explain`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ transaction_id: txnId }),
+  });
+  if (!res.ok) throw new Error(`POST /explain failed: ${res.status}`);
+  return res.json();
+}
+export async function fetchMlHealth() {
+  const res = await fetch(`${mlBase()}/health`);
+  if (!res.ok) throw new Error('ML health check failed');
+  return res.json();
+}
+
+`src/api/simulatorControl.ts`:
+const simBase = () =>
+  import.meta.env.VITE_SIMULATOR_CONTROL_URL ?? '/simulator-control';
+
+export const getSimulatorStatus  = () =>
+  fetch(`${simBase()}/status`).then(r => r.json());
+export const startSimulator      = () =>
+  fetch(`${simBase()}/start`, { method: 'POST' }).then(r => r.json());
+export const stopSimulator       = () =>
+  fetch(`${simBase()}/stop`,  { method: 'POST' }).then(r => r.json());
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 6 — HOOKS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/hooks/useFraudStream.ts`:
+
+Build a STOMP-over-SockJS client using @stomp/stompjs + sockjs-client.
+
+- Broker URL: import.meta.env.VITE_STOMP_URL ?? 'http://localhost:8080/ws'
+- Use Client from @stomp/stompjs; create webSocketFactory via 
+  () => new SockJS(brokerUrl)
+- reconnectDelay: 4000
+- On connect: set connection → 'live'. Subscribe to:
+    /topic/transactions → parse → pushTransaction
+    /topic/fraud-alerts → parse → pushFraudAlert
+    /topic/metrics      → parse → setMetrics
+- On disconnect/error: set connection → 'reconnecting'
+- On beforeConnect: set connection → 'connecting'
+- Parsing: JSON.parse the frame.body. If invalid JSON or missing 
+  required fields, call pushIntegrationWarnings with a descriptive 
+  message and skip the update.
+- Required fields check:
+    transaction: txn_id AND (source_account or sourceAccount)
+    fraud alert: alert_id AND cycle_accounts
+    metrics:     throughput_per_sec
+- Support camelCase aliases: sourceAccount→source_account, 
+  targetAccount→target_account, edgeIds→edge_ids, 
+  isHighRisk→is_high_risk, riskScore→risk_score,
+  alertId→alert_id, cycleAccounts→cycle_accounts,
+  detectionMethod→detection_method
+- Export: export function useFraudStream() — call Client.activate() 
+  on mount, Client.deactivate() on unmount.
+
+`src/hooks/useGraphRingsPoll.ts`:
+
+- Accept: { enabled: boolean, intervalMs?: number }
+- Default interval: 3000ms
+- When enabled: poll fetchRings() on interval. Return { rings, error, loading }.
+- Cancel poll on unmount or when enabled → false.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 7 — LIB UTILITIES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/lib/graphFromTransactions.ts`:
+
+Build nodes and links for react-force-graph-2d from 
+IngestedTransaction[].
+
+export interface GraphNode {
+  id:              string;
+  isHighRisk:      boolean;
+  inRing:          boolean;
+  centralityScore: number;
+  txnId?:          string;
+}
+export interface GraphLink {
+  source:     string;
+  target:     string;
+  inRing:     boolean;
+  isBackEdge: boolean;
+  txnId:      string;
+}
+
+export function buildGraphFromTransactions(
+  transactions: IngestedTransaction[],
+  ringAccountSet: Set<string>,
+  backEdgeTxnId:  string | null,
+  centralityMap:  Record<string, number>,
+): { nodes: GraphNode[]; links: GraphLink[] }
+
+- Cap to last 500 transactions.
+- One node per unique account id (source or target).
+- One link per transaction (source → target).
+- inRing = account id is in ringAccountSet.
+- isBackEdge = txn.txn_id === backEdgeTxnId.
+- centralityScore from centralityMap[accountId] ?? 0.
+
+`src/lib/pickGraphRing.ts`:
+
+export function pickRingForAlert(
+  rings: GraphEngineRing[],
+  alert: FraudAlert | null
+): GraphEngineRing | null
+
+- If alert?.alert_id matches a ring.ring_id → return that ring.
+- Else maximize overlap between alert.cycle_accounts and ring.node_ids.
+- Else return rings[0] (lowest priority_rank first).
+- Return null if rings is empty.
+
+`src/lib/filterRingTransactions.ts`:
+
+export function filterRingTransactions(
+  transactions: IngestedTransaction[],
+  cycleAccounts: string[]
+): IngestedTransaction[]
+
+- Return only transactions where source_account AND target_account 
+  are both in cycleAccounts set.
+
+`src/lib/sessionAnalytics.ts`:
+
+export interface PseudonymEntry {
+  accountHash: string;
+  txCount:     number;
+  lastSeen:    string;
+  isFraudLinked: boolean;
+  directions:  ('SOURCE' | 'TARGET')[];
+}
+
+export function pseudonymDirectory(
+  transactions: IngestedTransaction[],
+  fraudAlerts:  FraudAlert[]
+): PseudonymEntry[]
+
+- Aggregate per unique account ID across all source/target fields.
+- fraudLinked = true if account appears in any alert.cycle_accounts.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 8 — SHARED COMPONENTS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/components/MissingFieldBadge.tsx`:
+
+export function MissingFieldBadge({ field }: { field: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 bg-amber-950/40 
+                     border border-amber-900 text-amber-500 text-xs 
+                     font-mono px-1.5 py-0.5 rounded">
+      ⚠ {field} missing
+    </span>
+  );
+}
+
+`src/components/ConnectionPill.tsx`:
+
+Read connection from useStreamStore. 
+- 'live':        green dot + "LIVE"
+- 'connecting':  blue dot + "CONNECTING"
+- 'reconnecting': amber dot + "RECONNECTING"
+- 'idle':        zinc dot + "IDLE"
+Dot is a 6px circle with the live-dot CSS animation class when live.
+Text is mono text-xs. Whole pill: fg-card inline-flex px-2 py-1 
+rounded-full text-xs items-center gap-1.5.
+
+`src/components/StreamBootstrap.tsx`:
+
+import { useFraudStream } from '../hooks/useFraudStream';
+export function StreamBootstrap() {
+  useFraudStream();
+  return null;
+}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 9 — LAYOUT SHELL
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/layouts/Sidebar.tsx`:
+
+Structure:
+<aside className="w-60 h-screen flex flex-col bg-[var(--fg-bg-surface)] 
+                  border-r border-[var(--fg-border)] flex-shrink-0">
+
+  {/* Logo */}
+  <div className="flex items-center gap-2.5 px-4 py-5 
+                  border-b border-[var(--fg-border)]">
+    <div className="w-8 h-8 rounded-md bg-fg-red flex items-center 
+                    justify-center font-bold text-white mono text-sm">
+      FG
+    </div>
+    <div>
+      <p className="text-zinc-100 font-semibold text-sm leading-none">
+        FraudGraph
+      </p>
+      <p className="text-zinc-500 text-xs mono mt-0.5">
+        Command Center
+      </p>
+    </div>
+  </div>
+
+  {/* Nav */}
+  <nav className="flex-1 px-2 py-4 flex flex-col gap-1">
+    {NAV_ITEMS.map(item => (
+      <NavLink key={item.to} to={item.to} end={item.to === '/'}>
+        {({ isActive }) => (
+          <div className={`flex items-center gap-3 px-3 py-2.5 
+            rounded-md text-sm cursor-pointer transition-all duration-150
+            ${isActive 
+              ? 'bg-zinc-800 text-zinc-100 border-l-2 border-fg-red pl-[10px]' 
+              : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/40'
+            }`}>
+            <item.icon size={16} />
+            {item.label}
+          </div>
+        )}
+      </NavLink>
+    ))}
+  </nav>
+
+  {/* Bottom: connection status */}
+  <div className="px-4 py-4 border-t border-[var(--fg-border)]">
+    <ConnectionPill />
+  </div>
+</aside>
+
+NAV_ITEMS:
+  { to: '/',             icon: LayoutDashboard, label: 'Home'              }
+  { to: '/surveillance', icon: Radio,           label: 'Live Surveillance' }
+  { to: '/investigate',  icon: Search,          label: 'XAI & Forensics'  }
+  { to: '/privacy',      icon: ShieldCheck,     label: 'Security & Privacy'}
+
+Icons from lucide-react.
+
+`src/layouts/TopBar.tsx`:
+
+- Height h-13 (52px). Apply fg-glass class.
+- Left: current page title derived from useLocation().pathname:
+    '/'             → 'Project Overview'
+    '/surveillance' → 'Live Surveillance'
+    '/investigate'  → 'XAI & Forensics'
+    '/privacy'      → 'Security & Privacy'
+  Rendered in text-zinc-100 font-semibold text-sm.
+- Right: two items:
+  a) Transaction buffer count from useStreamStore in a 
+     zinc-800 px-2 py-0.5 rounded mono text-xs badge:
+     "{count} txns"
+  b) Live clock: update every second with setInterval in useEffect.
+     Format: HH:MM:SS in mono text-xs text-zinc-500.
+
+`src/layouts/AppLayout.tsx`:
+
+<div className="flex h-screen overflow-hidden 
+                bg-[var(--fg-bg-deepest)]">
+  <Sidebar />
+  <div className="flex-1 flex flex-col overflow-hidden">
+    <TopBar />
+    <main className="flex-1 overflow-auto p-4">
+      <Outlet />
+    </main>
+  </div>
+</div>
+
+`src/App.tsx`:
+
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
+import { StreamBootstrap } from './components/StreamBootstrap';
+import AppLayout from './layouts/AppLayout';
+import HomePage from './pages/HomePage';
+import LiveSurveillancePage from './pages/LiveSurveillancePage';
+import InvestigatePage from './pages/InvestigatePage';
+import PrivacyPage from './pages/PrivacyPage';
+
+export default function App() {
+  return (
+    <BrowserRouter>
+      <StreamBootstrap />
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/"              element={<HomePage />} />
+          <Route path="/surveillance"  element={<LiveSurveillancePage />} />
+          <Route path="/investigate"   element={<InvestigatePage />} />
+          <Route path="/investigate/:txnId" element={<InvestigatePage />} />
+          <Route path="/privacy"       element={<PrivacyPage />} />
+          <Route path="*"              element={<Navigate to="/" replace />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
+  );
+}
+
+`src/main.tsx`:
+
+import { StrictMode } from 'react';
+import { createRoot } from 'react-dom/client';
+import './index.css';
+import App from './App';
+
+createRoot(document.getElementById('root')!).render(
+  <StrictMode><App /></StrictMode>
+);
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 10 — PAGE A: HOME
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/pages/HomePage.tsx`:
+
+Wrap entire page in:
+<motion.div initial={{ opacity:0, y:10 }} animate={{ opacity:1, y:0 }} 
+            transition={{ duration:0.3 }} className="max-w-5xl mx-auto py-8 px-2">
+
+HERO:
+  <h1 className="font-display text-5xl font-bold tracking-tight text-zinc-100">
+    Fraud<span className="text-fg-red">Graph</span>
+  </h1>
+  <p className="text-zinc-400 text-lg mt-3">
+    Privacy-Preserving Cross-Bank Fraud Ring Detection — Real-Time.
+  </p>
+  <p className="text-zinc-500 text-sm mt-1 max-w-2xl">
+    Graph-based financial surveillance using Tarjan's SCC and PageRank 
+    to identify complex money laundering cycles across pseudonymized accounts.
+  </p>
+
+PIPELINE SECTION:
+  Section label row: 
+    <div className="flex items-center gap-3 mt-12 mb-4">
+      <span className="mono text-zinc-500 text-xs uppercase tracking-widest">
+        Detection Pipeline
+      </span>
+      <div className="flex-1 h-px bg-zinc-800" />
+    </div>
+
+  Staggered 4-card grid (grid-cols-4 gap-4):
+  Use Framer Motion stagger container/item pattern (see Section 12).
+  
+  Each card is a motion.div with fg-card p-5 and whileHover lift.
+  Card contents:
+    - Number: "01"/"02"/"03"/"04" in mono text-xs text-fg-red mb-3
+    - Icon (size 20) in its accent color mb-2
+    - Title in text-zinc-100 font-semibold text-sm mb-1.5
+    - Body in text-zinc-500 text-xs leading-relaxed
+
+  Card data:
+    01 | Zap (blue)    | Stream Ingest | 
+      "Kafka-backed STOMP stream ingests cross-bank transactions in 
+      real-time. Each transaction carries a hashed account ID — zero PII."
+    02 | Brain (amber) | ML Scoring | 
+      "XGBoost/LSTM scores each transaction for fraud likelihood. SHAP 
+      values generate per-node feature attributions for forensic review."
+    03 | Network (red) | Graph Engine | 
+      "Tarjan's SCC isolates strongly connected components. PageRank 
+      weights node centrality. Detected cycles emit as fraud alert events."
+    04 | Eye (green)   | Real-Time UI | 
+      "Force-directed graph renders rings in red with pulsing glow. 
+      Ticker, XAI forensics, and privacy audit logs update from live stream."
+
+LIVE STATUS STRIP:
+  Below cards, mt-8: a single fg-card p-3 flex row of 3 metrics:
+  Each metric: <div className="flex flex-col items-center gap-0.5 flex-1">
+    <span className="mono text-zinc-500 text-xs uppercase">{label}</span>
+    <span className="text-zinc-100 text-lg font-bold mono">{value}</span>
+  </div>
+  Dividers between: <div className="w-px h-8 bg-zinc-800" />
+
+  Metrics (reactive from useStreamStore):
+    a) "STOMP STATUS" → connection state with colored dot
+    b) "BUFFER SIZE" → transactions.length
+    c) "FRAUD ALERTS" → fraudAlerts.length
+
+QUICK NAV ROW:
+  mt-8 grid-cols-4 gap-3:
+  Each a link button (outlined) to the 4 routes:
+  <Link to={to}>
+    <motion.div whileHover={{ y:-2 }} whileTap={{ scale:0.97 }}
+      className="fg-card p-4 flex flex-col items-center gap-2 cursor-pointer
+                 hover:border-zinc-600 transition-colors text-center">
+      <Icon size={18} className="text-zinc-500" />
+      <span className="text-zinc-400 text-xs font-medium">{label}</span>
+    </motion.div>
+  </Link>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 11 — PAGE B: LIVE SURVEILLANCE
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/pages/LiveSurveillancePage.tsx`:
+
+State in this page component:
+  const [isPaused, setIsPaused] = useState(false);
+  const [simActive, setSimActive] = useState(false);
+  const [txnCount, setTxnCount] = useState(10);
+  const [fraudCount, setFraudCount] = useState(2);
+  const [injectMsg, setInjectMsg] = useState<string|null>(null);
+
+  // Snapshot for pause: frozen when isPaused flips to true
+  const { transactions, fraudAlerts, reset } = useStreamStore();
+  const frozenRef = useRef<IngestedTransaction[]>([]);
+  useEffect(() => {
+    if (isPaused) frozenRef.current = transactions;
+  }, [isPaused]);
+  const displayTransactions = isPaused ? frozenRef.current : transactions;
+
+LAYOUT:
+<motion.div initial={{ opacity:0 }} animate={{ opacity:1 }} 
+            transition={{ duration:0.25 }} className="flex flex-col gap-4 h-full">
+  <ControlBar ... />
+  <div className="flex gap-4" style={{ height: 'calc(100vh - 200px)' }}>
+    <div className="flex-[7] min-w-0">
+      <GraphPanel transactions={displayTransactions} 
+                  fraudAlerts={fraudAlerts}
+                  isPaused={isPaused} />
+    </div>
+    <div className="flex-[3] min-w-0">
+      <TickerPanel transactions={displayTransactions} 
+                   isPaused={isPaused} />
+    </div>
+  </div>
+</motion.div>
+
+`src/components/surveillance/ControlBar.tsx`:
+
+Props: {
+  isPaused: boolean, onTogglePause: () => void,
+  simActive: boolean, onToggleSim: () => void,
+  txnCount: number, onTxnCount: (n:number)=>void,
+  fraudCount: number, onFraudCount: (n:number)=>void,
+  onInject: () => void, onClearManual: () => void,
+  onGlobalClear: () => void,
+  injectMsg: string|null,
+}
+
+Render as fg-card p-3 flex items-center gap-6 flex-wrap:
+
+GROUP 1 — LIVE INJECTION:
+  <div className="flex items-center gap-2.5">
+    <span className="mono text-zinc-500 text-xs uppercase tracking-widest">
+      Live Injection
+    </span>
+    {/* Toggle */}
+    <button onClick={onToggleSim} 
+      className={`relative w-10 h-5 rounded-full transition-colors duration-200
+        ${simActive ? 'bg-fg-green' : 'bg-zinc-700'}`}>
+      <span className={`absolute top-0.5 w-4 h-4 rounded-full bg-white 
+        shadow transition-transform duration-200
+        ${simActive ? 'translate-x-5' : 'translate-x-0.5'}`} />
+    </button>
+    <span className={`mono text-xs ${simActive ? 'text-fg-green' : 'text-zinc-500'}`}>
+      {simActive ? 'ACTIVE' : 'IDLE'}
+    </span>
+  </div>
+
+  Divider: <div className="w-px h-8 bg-zinc-800" />
+
+GROUP 2 — MANUAL INJECTION:
+  <div className="flex items-center gap-2">
+    <span className="mono text-zinc-500 text-xs uppercase tracking-widest">
+      Manual
+    </span>
+    <input type="number" min={1} max={500} value={txnCount}
+      onChange={e => onTxnCount(+e.target.value)}
+      placeholder="Count"
+      className="w-16 bg-zinc-900 border border-zinc-700 text-zinc-100 
+                 rounded px-2 py-1 text-xs mono" />
+    <input type="number" min={0} max={txnCount} value={fraudCount}
+      onChange={e => onFraudCount(+e.target.value)}
+      placeholder="Fraud#"
+      className="w-16 bg-zinc-900 border border-zinc-700 text-zinc-100 
+                 rounded px-2 py-1 text-xs mono" />
+    <motion.button whileTap={{ scale:0.96 }} onClick={onInject}
+      className="bg-fg-red/10 border border-fg-red text-fg-red 
+                 hover:bg-fg-red hover:text-white text-xs px-3 py-1.5 
+                 rounded mono font-semibold transition-all">
+      INJECT
+    </motion.button>
+    <motion.button whileTap={{ scale:0.96 }} onClick={onClearManual}
+      className="bg-zinc-800 border border-zinc-700 text-zinc-400 
+                 text-xs px-3 py-1.5 rounded mono hover:text-zinc-200 
+                 transition-all">
+      CLEAR MANUAL
+    </motion.button>
+    {injectMsg && (
+      <span className="mono text-xs text-fg-green animate-pulse">
+        {injectMsg}
+      </span>
+    )}
+  </div>
+
+  Divider
+
+GROUP 3 — GLOBAL CONTROLS:
+  <div className="flex items-center gap-2 ml-auto">
+    <motion.button whileTap={{ scale:0.96 }} onClick={onTogglePause}
+      className="flex items-center gap-1.5 bg-zinc-800 border border-zinc-600 
+                 text-zinc-300 text-xs px-3 py-1.5 rounded mono 
+                 hover:border-zinc-400 transition-all">
+      <AnimatePresence mode="wait">
+        {isPaused 
+          ? <motion.span key="play"  initial={{opacity:0}} animate={{opacity:1}}>▶ PLAY</motion.span>
+          : <motion.span key="pause" initial={{opacity:0}} animate={{opacity:1}}>⏸ PAUSE</motion.span>
+        }
+      </AnimatePresence>
+    </motion.button>
+    <motion.button whileTap={{ scale:0.96 }} onClick={onGlobalClear}
+      className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 
+                 text-zinc-400 text-xs px-3 py-1.5 rounded mono 
+                 hover:border-fg-red hover:text-fg-red transition-all">
+      ⊗ GLOBAL CLEAR
+    </motion.button>
+  </div>
+
+onToggleSim handler (in LiveSurveillancePage):
+  if (!simActive) { await startSimulator(); setSimActive(true); }
+  else            { await stopSimulator();  setSimActive(false); }
+
+onInject handler:
+  await postBatchTransactions(txnCount, fraudCount);
+  if (fraudCount > 0) {
+    const ring = Array.from({length:3}, () => 
+      `ACCT_${Math.random().toString(36).slice(2,8).toUpperCase()}`);
+    await postFraudRingAlert(ring);
+  }
+  setInjectMsg(`✓ Injected ${txnCount} txns`);
+  setTimeout(() => setInjectMsg(null), 3000);
+
+onGlobalClear: useStreamStore.getState().reset()
+
+`src/components/surveillance/GraphPanel.tsx`:
+
+Props: { transactions: IngestedTransaction[], 
+         fraudAlerts: FraudAlert[], isPaused: boolean }
+
+- Use useGraphRingsPoll({ enabled: !isPaused, intervalMs: 3000 })
+- Derive ringAccountSet, backEdge, centralityMap from latest ring 
+  (use pickRingForAlert with fraudAlerts[0]).
+- Build graph data via buildGraphFromTransactions (useMemo, deps: 
+  transactions, ringAccountSet, backEdge, centralityMap).
+- Render fg-card h-full overflow-hidden relative.
+- Status badge top-left inside card: absolute top-2 left-2 z-10:
+  isPaused 
+    ? amber "⏸ PAUSED" badge
+    : green dot (live-dot class) + "LIVE" in text-fg-green mono text-xs
+- ForceGraph2D (import dynamically to avoid SSR issues):
+    width and height: fill container (use ResizeObserver or 
+    containerRef + state for responsive sizing)
+    backgroundColor: '#09090b'
+    graphData: { nodes, links }
+    nodeId: 'id'
+    nodeVal: (n) => Math.max(2, (n.centralityScore ?? 0.1) * 20)
+    nodeColor: (n) => {
+      if (n.inRing)     return '#ef4444';
+      if (n.isHighRisk) return '#f59e0b';
+      return '#52525b';
+    }
+    nodeCanvasObject: (node, ctx) => {
+      // Draw glow for ring nodes
+      if (node.inRing) {
+        ctx.beginPath();
+        ctx.arc(node.x, node.y, 8, 0, 2*Math.PI);
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = '#ef4444';
+        ctx.fillStyle = '#ef4444';
+        ctx.fill();
+        ctx.shadowBlur = 0;
+      }
+    }
+    nodeCanvasObjectMode: (n) => n.inRing ? 'before' : undefined
+    linkColor: (l) => {
+      if (l.isBackEdge) return '#ef4444';
+      if (l.inRing)     return 'rgba(239,68,68,0.5)';
+      return 'rgba(82,82,91,0.35)';
+    }
+    linkWidth: (l) => l.inRing ? 2 : 0.8
+    linkDirectionalArrowLength: 3
+    linkDirectionalArrowRelPos: 1
+    nodeLabel: (n) => 
+      `${n.id}${n.inRing ? ' [RING]' : ''}${n.isHighRisk ? ' ⚠ HIGH RISK' : ''}`
+    onNodeClick: (node) => {
+      if (node.inRing) {
+        useDashboardUiStore.getState().setPinnedTxnIdForXai(
+          node.txnId ?? node.id
+        );
+        navigate('/investigate/' + (node.txnId ?? node.id));
+      }
+    }
+    cooldownTicks: 150
+    warmupTicks: 0
+
+`src/components/surveillance/TickerPanel.tsx`:
+
+Props: { transactions: IngestedTransaction[], isPaused: boolean }
+Wrap in React.memo.
+
+const recent = useMemo(() => transactions.slice(0, 15), [transactions]);
+
+Render:
+<div className="fg-card h-full flex flex-col overflow-hidden">
+  {/* Header */}
+  <div className="flex items-center justify-between px-3 py-2.5 
+                  border-b border-zinc-800 flex-shrink-0">
+    <span className="mono text-zinc-400 text-xs uppercase tracking-widest">
+      Live Transactions
+    </span>
+    <div className="flex items-center gap-2">
+      {isPaused && (
+        <span className="bg-amber-950/40 border border-amber-900 
+                         text-amber-500 text-xs mono px-1.5 py-0.5 rounded">
+          PAUSED
+        </span>
+      )}
+      <span className="bg-zinc-800 text-zinc-500 mono text-xs px-2 py-0.5 rounded">
+        {recent.length}/15
+      </span>
+    </div>
+  </div>
+  {/* Rows */}
+  <div className="flex-1 overflow-y-auto">
+    <AnimatePresence initial={false}>
+      {recent.map(txn => (
+        <TickerRow key={txn.txn_id ?? Math.random()} txn={txn} />
+      ))}
+    </AnimatePresence>
+    {recent.length === 0 && (
+      <div className="flex flex-col items-center justify-center h-32 
+                      gap-2 text-zinc-600">
+        <Radio size={20} />
+        <span className="mono text-xs">Awaiting stream data...</span>
+      </div>
+    )}
+  </div>
+</div>
+
+`src/components/surveillance/TickerRow.tsx`:
+
+Wrapped in React.memo. Props: { txn: IngestedTransaction }
+
+<motion.div
+  layout
+  initial={{ opacity:0, y:-8 }}
+  animate={{ opacity:1, y:0 }}
+  exit={{ opacity:0, height:0 }}
+  transition={{ duration:0.18 }}
+  className="px-3 py-2.5 border-b border-zinc-800/60 
+             hover:bg-zinc-800/20 transition-colors"
+>
+  {/* Row 1: TXN ID + copy + XAI link */}
+  <div className="flex items-center gap-1.5 mb-1">
+    <span className="text-zinc-600 mono text-xs">TXN</span>
+    <span className="text-zinc-300 mono text-xs truncate flex-1">
+      {txn.txn_id 
+        ? txn.txn_id.slice(0,16) + '…' 
+        : <MissingFieldBadge field="txn_id" />}
+    </span>
+    {txn.txn_id && (
+      <button onClick={() => copyToClipboard(txn.txn_id)}
+        className="text-zinc-600 hover:text-zinc-300 transition-colors">
+        <Copy size={10} />
+      </button>
+    )}
+    {txn.txn_id && (
+      <button onClick={() => {
+        useDashboardUiStore.getState().setPinnedTxnIdForXai(txn.txn_id);
+        navigate('/investigate/' + txn.txn_id);
+      }} className="text-zinc-600 hover:text-fg-blue transition-colors">
+        <ExternalLink size={10} />
+      </button>
+    )}
+  </div>
+  {/* Row 2: source → target */}
+  <div className="flex items-center gap-1 mb-1">
+    <span className="mono text-zinc-500 text-xs truncate max-w-[60px]">
+      {txn.source_account?.slice(0,8) ?? <MissingFieldBadge field="src" />}
+    </span>
+    <ArrowRight size={8} className="text-zinc-700 flex-shrink-0" />
+    <span className="mono text-zinc-500 text-xs truncate max-w-[60px]">
+      {txn.target_account?.slice(0,8) ?? <MissingFieldBadge field="tgt" />}
+    </span>
+  </div>
+  {/* Row 3: amount + badges */}
+  <div className="flex items-center gap-1.5">
+    <span className="mono text-zinc-100 text-xs font-semibold">
+      ${txn.amount?.toLocaleString() ?? '—'}
+    </span>
+    {txn.is_high_risk && (
+      <span className="bg-amber-950/40 border border-amber-900 
+                       text-amber-500 text-xs mono px-1 py-0.5 rounded">
+        HIGH RISK
+      </span>
+    )}
+    {txn.fraud_ring_id && (
+      <span className="bg-red-950/40 border border-fg-red/30 
+                       text-fg-red text-xs mono px-1 py-0.5 rounded">
+        RING
+      </span>
+    )}
+  </div>
+</motion.div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 12 — PAGE C: XAI & FORENSICS
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/pages/InvestigatePage.tsx`:
+
+const { txnId: urlTxnId } = useParams();
+const { pinnedTxnIdForXai } = useDashboardUiStore();
+const { fraudAlerts, transactions } = useStreamStore();
+const navigate = useNavigate();
+
+const activeTxnId = urlTxnId ?? pinnedTxnIdForXai ?? '';
+const [inputId, setInputId] = useState(activeTxnId);
+const [result, setResult] = useState<ExplainResponse|null>(null);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState<string|null>(null);
+
+// Graph rings poll for detection_method
+const { rings } = useGraphRingsPoll({ enabled: true, intervalMs: 5000 });
+const latestAlert = fraudAlerts[0] ?? null;
+const pickedRing = pickRingForAlert(rings ?? [], latestAlert);
+
+const detectionMethod = 
+  pickedRing?.detection_method ?? 
+  latestAlert?.detection_method ?? 
+  null;
+
+const ringAccounts = latestAlert?.cycle_accounts ?? 
+                     pickedRing?.node_ids ?? [];
+const ringTxns = filterRingTransactions(transactions, ringAccounts);
+
+async function handleLookup() {
+  if (!inputId) return;
+  setLoading(true); setError(null); setResult(null);
+  useDashboardUiStore.getState().setPinnedTxnIdForXai(inputId);
+  navigate('/investigate/' + inputId, { replace: true });
+  try {
+    const data = await postExplain(inputId);
+    setResult(data);
+  } catch(e) {
+    setError(e instanceof Error ? e.message : 'Lookup failed');
+  } finally {
+    setLoading(false);
+  }
+}
+
+LAYOUT (motion.div page wrapper):
+
+{/* Detection method box */}
+<div className="fg-card p-3 mb-4 flex items-center gap-3 flex-wrap">
+  <div className="w-2 h-2 rounded-full bg-fg-red live-dot flex-shrink-0" />
+  <span className="mono text-zinc-500 text-xs uppercase tracking-widest">
+    Detection Logic
+  </span>
+  {detectionMethod 
+    ? <span className="bg-red-950/40 border border-fg-red/30 text-fg-red 
+                        mono text-xs px-2 py-0.5 rounded">
+        {detectionMethod}
+      </span>
+    : <span className="mono text-zinc-600 text-xs">
+        Awaiting ring detection signal...
+      </span>
+  }
+  {pickedRing?.ring_id && (
+    <span className="ml-auto mono text-zinc-600 text-xs">
+      Ring · {pickedRing.ring_id}
+    </span>
+  )}
+</div>
+
+{/* Two columns */}
+<div className="grid grid-cols-[55%_45%] gap-4 h-[calc(100vh-240px)]">
+
+  {/* LEFT: Isolated ring subgraph */}
+  <div className="fg-card overflow-hidden flex flex-col">
+    <div className="px-3 py-2.5 border-b border-zinc-800 flex-shrink-0">
+      <span className="mono text-zinc-400 text-xs uppercase tracking-widest">
+        Ring Subgraph
+      </span>
+      {ringTxns.length > 0 && (
+        <span className="ml-2 mono text-zinc-600 text-xs">
+          {ringAccounts.length} nodes
+        </span>
+      )}
+    </div>
+    <div className="flex-1">
+      {ringTxns.length > 0 
+        ? <ForceGraph2D 
+            graphData={buildGraphFromTransactions(
+              ringTxns, 
+              new Set(ringAccounts), 
+              pickedRing?.dfs_back_edge ?? null,
+              pickedRing?.centrality ?? {}
+            )}
+            backgroundColor="#09090b"
+            nodeColor={() => '#ef4444'}
+            linkColor={(l) => l.isBackEdge ? '#ef4444' : 'rgba(239,68,68,0.4)'}
+            linkWidth={2}
+            cooldownTicks={80}
+          />
+        : <div className="flex flex-col items-center justify-center h-full 
+                           gap-3 text-zinc-700">
+            <Network size={32} />
+            <span className="mono text-xs text-center max-w-[200px]">
+              Select a transaction from Live Surveillance to isolate 
+              its fraud ring
+            </span>
+          </div>
+      }
+    </div>
+  </div>
+
+  {/* RIGHT: Forensics panel */}
+  <div className="fg-card flex flex-col overflow-auto">
+    {/* TXN ID input */}
+    <div className="p-4 border-b border-zinc-800">
+      <label className="mono text-zinc-500 text-xs uppercase mb-1.5 block">
+        Transaction ID
+      </label>
+      <div className="flex gap-2">
+        <input value={inputId} onChange={e => setInputId(e.target.value)}
+          placeholder="Enter txn_id (UUID on edges)"
+          className="flex-1 bg-zinc-900 border border-zinc-700 text-zinc-100 
+                     mono text-xs rounded px-2.5 py-1.5 
+                     focus:outline-none focus:border-zinc-500" />
+        <motion.button whileTap={{ scale:0.96 }} onClick={handleLookup}
+          disabled={!inputId || loading}
+          className="bg-fg-red/10 border border-fg-red text-fg-red 
+                     hover:bg-fg-red hover:text-white mono text-xs px-3 
+                     py-1.5 rounded transition-all disabled:opacity-40">
+          {loading ? '…' : 'LOOKUP'}
+        </motion.button>
+      </div>
+    </div>
+
+    {/* Loading */}
+    {loading && (
+      <div className="flex items-center justify-center py-12">
+        <motion.div animate={{ rotate:360 }} transition={{ 
+          duration:1, repeat:Infinity, ease:'linear' }}
+          className="w-6 h-6 border-2 border-fg-red border-t-transparent rounded-full" />
+      </div>
+    )}
+
+    {/* Error */}
+    {error && (
+      <div className="m-4 fg-card border-fg-red/50 p-3">
+        <p className="text-fg-red mono text-xs">{error}</p>
+        <p className="text-zinc-500 mono text-xs mt-1">
+          Tip: Use the txn_id from the Live Surveillance ticker (UUID 
+          on transaction edges, not account hash).
+        </p>
+      </div>
+    )}
+
+    {/* Results */}
+    {result && (
+      <div className="p-4 flex flex-col gap-5">
+        {/* Risk score */}
+        <div className="text-center py-3">
+          <div className={`font-display text-5xl font-bold ${
+            (result.risk_score ?? 0) > 0.7 ? 'text-fg-red' :
+            (result.risk_score ?? 0) > 0.3 ? 'text-fg-amber' : 'text-fg-green'
+          }`}>
+            {result.risk_score != null 
+              ? `${Math.round(result.risk_score * 100)}%`
+              : <MissingFieldBadge field="risk_score" />}
+          </div>
+          <div className="mono text-zinc-500 text-xs uppercase mt-1">
+            Risk Score
+          </div>
+        </div>
+
+        {/* SHAP bars */}
+        <div>
+          <p className="mono text-zinc-500 text-xs uppercase mb-2">
+            Feature Importance (SHAP)
+          </p>
+          {(result.shap_values ?? []).slice(0,8).map(f => (
+            <div key={f.feature} className="flex items-center gap-2 mb-1.5">
+              <span className="mono text-zinc-400 text-xs w-28 truncate flex-shrink-0">
+                {f.feature}
+              </span>
+              <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+                <div className="h-1.5 rounded-full transition-all"
+                  style={{
+                    width: `${Math.abs(f.contribution) * 100}%`,
+                    backgroundColor: f.contribution >= 0 ? '#ef4444' : '#52525b',
+                  }} />
+              </div>
+              <span className="mono text-fg-amber text-xs w-12 text-right flex-shrink-0">
+                {f.contribution.toFixed(3)}
+              </span>
+            </div>
+          ))}
+          {!result.shap_values?.length && 
+            <MissingFieldBadge field="shap_values" />}
+        </div>
+
+        {/* Metadata */}
+        <div className="flex flex-col gap-1.5 pt-2 border-t border-zinc-800">
+          {[
+            ['TXN ID',       result.txn_id],
+            ['TIMESTAMP',    result.timestamp],
+            ['TOTAL VOLUME', result.total_volume?.toString()],
+          ].map(([label, value]) => (
+            <div key={label} className="flex items-center justify-between">
+              <span className="mono text-zinc-500 text-xs">{label}</span>
+              {value 
+                ? <span className="mono text-zinc-300 text-xs">{value}</span>
+                : <MissingFieldBadge field={label!.toLowerCase()} />
+              }
+            </div>
+          ))}
+        </div>
+      </div>
+    )}
+
+    {!loading && !error && !result && (
+      <div className="flex flex-col items-center justify-center flex-1 
+                      gap-2 text-zinc-700 py-12">
+        <Search size={24} />
+        <span className="mono text-xs">Enter a transaction ID to explain</span>
+      </div>
+    )}
+  </div>
+</div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 13 — PAGE D: SECURITY & PRIVACY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`src/pages/PrivacyPage.tsx`:
+
+Entire page in motion.div wrapper (standard page entry animation).
+
+HEADER (no card):
+  <div className="flex items-start justify-between mb-6">
+    <div>
+      <h1 className="text-zinc-100 text-xl font-semibold">
+        Security & Privacy
+      </h1>
+      <p className="text-zinc-500 text-sm mt-1">
+        Session-scoped pseudonym handling and audit logs. 
+        No PII is ever stored or transmitted.
+      </p>
+    </div>
+    <span className="bg-amber-950/40 border border-amber-900 text-amber-500 
+                     text-xs mono px-2 py-1 rounded flex-shrink-0">
+      SESSION DATA ONLY — not persisted
+    </span>
+  </div>
+
+THREE SECTIONS (flex flex-col gap-4):
+
+SECTION A — Pseudonym Activity:
+  const dir = pseudonymDirectory(transactions, fraudAlerts);
+
+  fg-card:
+    Header row: "PSEUDONYM ACTIVITY" mono uppercase zinc-400 text-xs 
+      + "{dir.length} accounts observed" zinc-600 badge.
+    Description line (text-zinc-600 text-xs p-3 pt-0 border-b border-zinc-800):
+      "Account identifiers are pseudonymized SHA-256 hashes from the ingest 
+      pipeline. No source bank or real identity is exposed to this UI."
+    
+    TanStack Table columns:
+      - ACCOUNT_HASH: mono text-zinc-300 text-xs, 
+        render: entry.accountHash.slice(0,14) + '…'
+      - DIRECTION: 'SOURCE' / 'TARGET' / 'BOTH' badge
+        SOURCE → blue badge, TARGET → zinc badge, BOTH → purple badge
+      - TX_COUNT: mono text-zinc-400 text-xs
+      - LAST_SEEN: format as relative (e.g. "2m ago") mono text-zinc-500 text-xs
+      - FRAUD_LINKED: YES (red badge) / NO (zinc badge)
+
+    Table styling:
+      thead: bg-zinc-900/50 text-zinc-500 text-xs mono uppercase tracking-wider
+      tbody rows: border-b border-zinc-800 text-zinc-300 text-xs mono 
+                  hover:bg-zinc-900/40 transition-colors
+      
+    Empty state: 
+      <div className="flex flex-col items-center gap-2 py-12 text-zinc-700">
+        <ShieldCheck size={24} />
+        <span className="mono text-xs">
+          No transactions received this session. 
+          Start Live Injection on the Surveillance page.
+        </span>
+      </div>
+
+SECTION B — Fraud Ring Alerts:
+  const alerts = useStreamStore(s => s.fraudAlerts);
+  
+  fg-card:
+    Header: "FRAUD RING ALERTS (SESSION)" + count badge.
+    Description: "Events from /topic/fraud-alerts — drive the red ring 
+      highlight on Live Surveillance."
+    
+    TanStack Table columns:
+      - ALERT_ID: mono text-xs zinc-300, truncated to 12 chars
+      - CYCLE_LENGTH: mono text-xs zinc-400 (cycle_accounts.length)
+      - DETECTION_METHOD: red badge if present, zinc "unknown" if not
+      - ACCOUNTS: cycle_accounts.slice(0,2).map(a=>a.slice(0,6)).join(', ') + '…'
+        in mono text-zinc-500 text-xs
+      - TIMESTAMP: relative time or "—" in mono text-zinc-500 text-xs
+
+    Row click: navigate to /investigate and pin edge_ids[0] as XAI txn id.
+    Same table + empty state styling as Section A.
+
+SECTION C — Integration Health:
+  const { integrationWarnings, clearIntegrationWarnings } = useStreamStore();
+
+  fg-card with internal console bg:
+    Header row: "INTEGRATION WARNINGS" mono uppercase zinc-400 text-xs 
+      + count badge + "CLEAR" button (zinc-700 text-xs mono on right).
+    
+    <div className="bg-zinc-950 rounded-b-md border-t border-zinc-800 
+                    p-3 max-h-48 overflow-y-auto font-mono text-xs">
+      {integrationWarnings.length === 0 
+        ? <span className="text-fg-green">
+            ✓ No warnings — all STOMP messages parsed cleanly.
+          </span>
+        : integrationWarnings.map((w, i) => (
+            <div key={i} className="text-amber-400 leading-relaxed">{w}</div>
+          ))
+      }
+      {integrationWarnings.length > 0 && (
+        <span className="inline-block w-2 h-4 bg-zinc-400 
+                         animate-pulse ml-0.5 align-middle" />
+      )}
+    </div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 14 — VITEST CONFIG + GLOBAL CLEAR TEST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+`fraudgraph-ui/vitest.config.ts`:
+
+import { defineConfig } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+
+export default defineConfig({
+  plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    setupFiles:  './src/test-setup.ts',
+    globals:     true,
+  },
+});
+
+`fraudgraph-ui/src/test-setup.ts`:
+
+import '@testing-library/jest-dom';
+
+`fraudgraph-ui/src/store/streamStore.globalClear.test.ts`:
+
+import { describe, it, expect, beforeEach } from 'vitest';
+import { act } from 'react';
+import { useStreamStore } from './streamStore';
+
+describe('useStreamStore — Global Clear (reset)', () => {
+  beforeEach(() => {
+    act(() => { useStreamStore.getState().reset(); });
+  });
+
+  it('reset() empties transactions buffer', () => {
+    act(() => {
+      useStreamStore.getState().pushTransaction({
+        txn_id: 'test-txn-1', source_account: 'ACCT_A',
+        target_account: 'ACCT_B', amount: 500,
+        timestamp: new Date().toISOString(), is_high_risk: false,
+      });
+    });
+    expect(useStreamStore.getState().transactions).toHaveLength(1);
+    act(() => { useStreamStore.getState().reset(); });
+    expect(useStreamStore.getState().transactions).toHaveLength(0);
+  });
+
+  it('reset() clears fraud alerts', () => {
+    act(() => {
+      useStreamStore.getState().pushFraudAlert({
+        alert_id: 'alert-1', cycle_accounts: ['A','B'],
+        edge_ids: [], reason: 'test ring',
+      });
+    });
+    expect(useStreamStore.getState().fraudAlerts).toHaveLength(1);
+    act(() => { useStreamStore.getState().reset(); });
+    expect(useStreamStore.getState().fraudAlerts).toHaveLength(0);
+  });
+
+  it('reset() sets connection back to idle', () => {
+    act(() => { useStreamStore.setState({ connection: 'live' }); });
+    expect(useStreamStore.getState().connection).toBe('live');
+    act(() => { useStreamStore.getState().reset(); });
+    expect(useStreamStore.getState().connection).toBe('idle');
+  });
+
+  it('reset() clears integration warnings', () => {
+    act(() => {
+      useStreamStore.getState().pushIntegrationWarnings(['Schema mismatch']);
+    });
+    expect(useStreamStore.getState().integrationWarnings.length).toBeGreaterThan(0);
+    act(() => { useStreamStore.getState().reset(); });
+    expect(useStreamStore.getState().integrationWarnings).toHaveLength(0);
+  });
+
+  it('reset() nulls out metrics', () => {
+    act(() => {
+      useStreamStore.getState().setMetrics({
+        throughput_per_sec: 42, total_processed: 1000,
+        fraud_detected: 3, timestamp: new Date().toISOString(),
+      });
+    });
+    expect(useStreamStore.getState().metrics).not.toBeNull();
+    act(() => { useStreamStore.getState().reset(); });
+    expect(useStreamStore.getState().metrics).toBeNull();
+  });
+});
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 15 — FRAMER MOTION HELPERS (stagger)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Use this pattern for pipeline cards and any staggered list:
+
+const containerVariants = {
+  hidden: {},
+  show: { transition: { staggerChildren: 0.08, delayChildren: 0.1 } }
+};
+const itemVariants = {
+  hidden: { opacity: 0, y: 16 },
+  show:   { opacity: 1, y: 0, transition: { duration: 0.35 } }
+};
+
+<motion.div variants={containerVariants} initial="hidden" animate="show"
+  className="grid grid-cols-4 gap-4">
+  {cards.map(card => (
+    <motion.div key={card.id} variants={itemVariants}
+      whileHover={{ scale:1.02, borderColor:'var(--fg-border-hover)' }}
+      whileTap={{ scale:0.98 }}
+      className="fg-card p-5 cursor-pointer">
+      ...
+    </motion.div>
+  ))}
+</motion.div>
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+SECTION 16 — FINAL CHECKLIST
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+[ ] `fraudgraph-ui/` folder created, scaffolded via Vite react-ts
+[ ] All npm packages installed (see Section 0)
+[ ] Port 5174 (not 5173 — that's the old dashboard)
+[ ] global: 'globalThis' in vite.config.ts (for sockjs-client)
+[ ] All 4 proxy routes in vite.config.ts
+[ ] CSS custom properties in index.css
+[ ] Tailwind config extends fg-* tokens
+[ ] JetBrains Mono + DM Sans fonts loaded (Google Fonts @import)
+[ ] App.tsx has StreamBootstrap at root (one STOMP client)
+[ ] Routes: / /surveillance /investigate /investigate/:txnId /privacy
+[ ] Sidebar NavLink active state: border-l-2 border-fg-red + bg-zinc-800
+[ ] Graph canvas backgroundColor '#09090b'
+[ ] Ring nodes: #ef4444 with ctx.shadowBlur=20 glow
+[ ] High-risk nodes: #f59e0b
+[ ] Clicking ring node → pinnedTxnIdForXai set → navigate /investigate
+[ ] Ticker limited to 15 rows, animated with AnimatePresence
+[ ] Ticker rows include txn_id truncated + copy button + XAI link
+[ ] ControlBar: simulator toggle calls startSimulator/stopSimulator
+[ ] Manual inject: postBatchTransactions + postFraudRingAlert
+[ ] Global Clear: useStreamStore.getState().reset()
+[ ] Pause: freezes snapshot via frozenRef
+[ ] Detection method box on /investigate
+[ ] MissingFieldBadge on ALL nullable data renders
+[ ] PrivacyPage: pseudonymDirectory drives Section A table
+[ ] PrivacyPage: fraudAlerts drives Section B table
+[ ] PrivacyPage: integrationWarnings drives console log
+[ ] vitest.config.ts configured with jsdom
+[ ] globalClear test file present, `npm test` passes
+[ ] `npm run build` passes — zero TypeScript errors
+[ ] `fraudgraph-dashboard/` is completely untouched

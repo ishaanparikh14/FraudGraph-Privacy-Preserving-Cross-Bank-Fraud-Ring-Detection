@@ -1,0 +1,29 @@
+[
+  {
+    "txn_id": "TXN001",
+    "sender_id": "ACC1",
+    "receiver_id": "ACC2",
+    "amount": 5000.00,
+    "timestamp": "2026-04-20T10:00:00Z",
+    "risk_score": 0.95,
+    "is_high_risk": true
+  },
+  {
+    "txn_id": "TXN002",
+    "sender_id": "ACC2",
+    "receiver_id": "ACC3",
+    "amount": 3000.00,
+    "timestamp": "2026-04-20T10:01:00Z",
+    "risk_score": 0.92,
+    "is_high_risk": true
+  },
+  {
+    "txn_id": "TXN003",
+    "sender_id": "ACC3",
+    "receiver_id": "ACC1",
+    "amount": 2000.00,
+    "timestamp": "2026-04-20T10:02:00Z",
+    "risk_score": 0.88,
+    "is_high_risk": true
+  }
+]
