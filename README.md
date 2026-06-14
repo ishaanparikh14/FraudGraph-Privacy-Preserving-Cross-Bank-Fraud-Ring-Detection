@@ -38,12 +38,6 @@ The home page shows the four-stage detection pipeline and live STOMP connection 
 
 ![Home — LIVE with 37 txns and 2 fraud alerts](assets/Screenshot%202026-06-14%20102625.png)
 
----
-
-### Home — Reconnecting State
-When the backend services are not reachable, the system automatically tries to reconnect and shows the user the offline status.
-
-![Home — Reconnecting](assets/Screenshot%202026-06-14%20101310.png)
 
 ---
 
@@ -101,12 +95,6 @@ All account identifiers are SHA-256 pseudonyms. This page shows every account se
 
 ![Security & Privacy — 20 accounts, session-only data](assets/Screenshot%202026-06-14%20102759.png)
 
----
-
-### Backend Status Indicator
-Bottom-right bar shows health of all backends (WebSocket, Spring API, Graph Engine, ML scorer, Simulator). Green = healthy, red = unreachable.
-
-![Backend status bar — all green](assets/Screenshot%202026-06-14%20102249.png)
 
 ---
 
